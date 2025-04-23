@@ -1,0 +1,33 @@
+# netlify.toml
+
+[build]
+  # Command to build frontend assets (if any). For now, none needed.
+  command = "echo 'No build command needed for now'" 
+  # Directory containing deployable static files (e.g., index.html).
+  publish = "public/"    
+  # Directory where Netlify Functions live.
+  functions = "functions/" 
+
+# Configuration for the local development server (netlify dev)
+[dev]
+  # Optional: Specify port for netlify dev (default is often 8888)
+  # port = 8888 
+  # Optional: Specify command to run in parallel (e.g., frontend dev server)
+  # command = "npm run start:frontend" # Example if you have a frontend process
+  # targetPort = 3000 # Port your frontend framework runs on
+
+# Example redirect to proxy API calls to Netlify functions
+# This makes your local functions accessible via /api/* paths
+[[redirects]]
+  from = "/api/*"
+  # Proxies request to the function matching the path segment after /api/
+  # e.g., /api/transaction-service -> /.netlify/functions/transaction-service
+  to = "/.netlify/functions/:splat" 
+  status = 200 # OK status for proxy
+
+# More specific redirects can be added later if needed, e.g.:
+# [[redirects]]
+#   from = "/api/transactions/*"
+#   to = "/.netlify/functions/transaction-service" # Route all to one function
+#   status = 200
+#   force = true # Ensures this redirect takes precedence 
