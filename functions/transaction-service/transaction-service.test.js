@@ -346,17 +346,19 @@ describe('Transaction Service Handler', () => {
     describe('POST /transactions/external', () => {
         const externalDepositUrl = '/transactions/external';
         const validApiKey = 'valid-api-key';
-        const validCustomerId = 'cust_123';
+        // const validCustomerId = 'cust_123'; // UNUSED
         const validAccountId = 'acc_456';
         const expectedLedgerEntry = { id: 'le_789', /* ... other fields */ };
 
         // Helper for failed JWT auth mock setup
+        /* UNUSED HELPER
         const mockFailedAuth = (errorMessage = 'Mock verification fail') => {
             jwt.verify.mockImplementation((token, keyLookup, options, callback) => {
                 // Directly call callback with an error
                 callback(new Error(errorMessage), null); 
             });
         };
+        */
 
         beforeEach(() => {
             // Reset mocks before each test

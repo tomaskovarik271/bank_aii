@@ -130,7 +130,7 @@ describe('Customer Service Handler (handlerInternal)', () => {
         // 1. Mock jwt.verify to succeed by calling the callback with the decoded token
         mockJwtVerify.mockImplementation((token, keyLookupFunc, options, callback) => {
              // Simulate the call to getSigningKey (the keyLookupFunc)
-             keyLookupFunc({ kid: 'mockKid' }, (keyErr, signingKey) => {
+             keyLookupFunc({ kid: 'mockKid' }, (keyErr /*, signingKey*/) => {
                   if (keyErr) {
                        // If getSigningKey provided an error, pass it to jwt.verify's callback
                        return callback(keyErr);

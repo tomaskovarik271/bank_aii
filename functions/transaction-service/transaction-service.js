@@ -169,7 +169,8 @@ async function handlerInternal(event, context, _verifyToken = verifyToken, _getC
 
         } else if (apiKey) {
             console.log('Attempting API Key authentication...');
-            customerId = await _getCustomerIdForApiKey(apiKey, baseSupabaseClient); // Use injected get function
+            // customerId = await _getCustomerIdForApiKey(apiKey, baseSupabaseClient); // Use injected get function -- UNUSED
+            await _getCustomerIdForApiKey(apiKey, baseSupabaseClient); // Still call it, but don't store the result
             supabase = baseSupabaseClient; // Use base anon client for API key requests
             isApiKeyAuth = true;
             console.log('API Key authentication successful.');
