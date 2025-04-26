@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "jest --testPathIgnorePatterns=tests/integration",
+    "test:integration": "jest tests/integration",
+    "test:all": "jest",
     "lint": "eslint -c .eslintrc.json functions/**/*.js"
   },
   "keywords": [],
