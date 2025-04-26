@@ -49,10 +49,10 @@ const mockCustomerId = 'cust-uuid-123bbb'; // Use a different UUID from other te
 const mockAuth0UserId = 'auth0|user-for-transactions';
 const mockValidJwt = 'mockValidTokenStringTransactions';
 const mockDecodedToken = { sub: mockAuth0UserId };
-const mockApiKey = 'test-api-key-transactions-abc';
-const mockAccountId = '999e8400-e29b-41d4-a716-446655440999'; // Account ID used in transaction tests
-const mockAccountId2 = '888e4567-e89b-12d3-a456-426614174888'; // Another distinct account ID
-const mockTransactionId = 'txn-group-uuid-transfer-1';
+// const mockApiKey = 'test-api-key-transactions-abc'; // Unused
+// const mockAccountId = '999e8400-e29b-41d4-a716-446655440999'; // Unused
+// const mockAccountId2 = '888e4567-e89b-12d3-a456-426614174888'; // Unused
+// const mockTransactionId = 'txn-group-uuid-transfer-1'; // Unused
 
 // --- Test Suite ---
 describe('Transaction Service Handler', () => {
@@ -86,16 +86,20 @@ describe('Transaction Service Handler', () => {
     };
 
     // Helper for successful API Key auth mock setup (Adapted from account-service)
+    /* // Unused
     const mockSuccessfulApiKeyAuth = (customerId = mockCustomerId) => {
         // Directly mock the function that gets injected into handlerInternal
         mockVerifyApiKey.mockResolvedValue(customerId); 
     };
+    */
 
     // Helper for failed API Key auth mock setup
+    /* // Unused
     const mockFailedApiKeyAuth = (errorToThrow) => {
         // Directly mock the function that gets injected into handlerInternal
         mockVerifyApiKey.mockRejectedValue(errorToThrow);
     };
+    */
 
     // Reset mocks before each test
     beforeEach(() => {

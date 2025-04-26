@@ -373,7 +373,7 @@ async function handlerInternal(event, context, _getCustomerIdForApiKey = getCust
                 try {
                     // 1. Verify account access using the dedicated RPC
                     console.log(`Verifying access for customer ${customerId} to account ${accountId}...`);
-                    const { data: accessData, error: accessError } = await userSupabase.rpc(
+                    const { error: accessError } = await userSupabase.rpc(
                         'check_account_access',
                         {
                             p_account_id: accountId,

@@ -193,7 +193,7 @@ This document provides a snapshot of the Core Banking System project based on th
 ### 6.3. `account-service`
 
 *   **File:** `functions/account-service/account-service.js`
-*   **Purpose:** Manages bank accounts (creation, retrieval, listing, update, delete).
+*   **Purpose:** Manages bank accounts (creation, retrieval, listing, update, delete) and retrieves account transaction history.
 *   **Tests:** Comprehensive unit tests available in `account-service.test.js`.
 *   **Endpoints Implemented:**
     *   `POST /api/account-service/accounts`: Creates a new account (CHECKING/SAVINGS) linked to the authenticated user's customer profile.
@@ -201,12 +201,39 @@ This document provides a snapshot of the Core Banking System project based on th
     *   `GET /api/account-service/accounts/{accountId}`: Retrieves details for a specific account, including calculated balance.
     *   `PATCH /api/account-service/accounts/{accountId}`: Updates the nickname for a specific account.
     *   `DELETE /api/account-service/accounts/{accountId}`: Deletes a specific account.
-    *   `GET /api/account-service/accounts/{accountId}/transactions`: (Not Implemented - returns 501)
+    *   `GET /api/account-service/accounts/{accountId}/transactions`: Retrieves the list of ledger entries for a specific account.
+        *   **Method:** `GET`
+        *   **Auth:** JWT or API Key required.
+        *   **Purpose:** Fetches the transaction history (ledger entries) for an account the authenticated user has access to.
+        *   **Response:**
+            *   `200 OK`: Returns an array of ledger entry objects.
+                ```json
+                // Example Shape (matches ledger_entries table + RPC return)
+                [
+                  {
+                    "id": 1,
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "transaction_id": "tx-uuid-1",
+                    "account_id": "acc_uuid",
+                    "entry_type": "DEBIT",
+                    "amount": 50.00,
+                    "currency": "USD",
+                    "description": "Payment"
+                  },
+                  { ... next entry ...}
+                ]
+                ```
+            *   `400 Bad Request`: Invalid `accountId` format in the path.
+            *   `401 Unauthorized`: Missing or invalid authentication (JWT or API Key).
+            *   `403 Forbidden`: Authenticated user does not have access to the requested `accountId` (checked via `check_account_access` RPC).
+            *   `404 Not Found`: Account not found (if `get_account_transactions` RPC fails with 'Not Found').
+            *   `500 Internal Server Error`: Database error during access check or transaction fetch RPC call.
     *   `POST /api/account-service/accounts/{accountId}/transactions`: (Not Implemented - returns 501)
 *   **Key Features:**
     *   Handles both JWT and API Key authentication.
-    *   Uses `check_account_access` Supabase RPC for authorization on specific account operations.
+    *   Uses `check_account_access` Supabase RPC for authorization on specific account operations (GET/PATCH/DELETE specific account, GET transactions).
     *   Calls `calculate_balance` Supabase RPC for `GET /{accountId}`.
+    *   Calls `get_account_transactions` Supabase RPC for `GET /{accountId}/transactions`.
     *   Generates placeholder unique `account_number` using UUID.
 
 ## 7. Database Schema & Migrations (Supabase)
@@ -222,7 +249,7 @@ This document provides a snapshot of the Core Banking System project based on th
     7.  `supabase db push` (Applies new migrations to linked remote DB)
 *   **Implemented Migrations:**
     *   `..._init_schema.sql`: Creates ENUM types, `customers`, `accounts`, `ledger_entries` tables with columns, indexes, FKs. Enables `moddatetime` extension and RLS on tables.
-    *   `..._create_ledger_rpcs.sql`: Creates `public.calculate_balance(uuid)` and `public.post_ledger_transaction(...)` functions.
+    *   `..._create_ledger_rpcs.sql`: Creates `public.calculate_balance(uuid)`, `public.post_ledger_transaction(...)`, `public.check_account_access(p_account_id, p_customer_id)`, `public.get_my_customer_id()`, `public.get_customer_id_for_api_key(p_api_key)`, `public.post_external_deposit(...)`, and `public.get_account_transactions(p_account_id, p_requesting_customer_id)` functions.
     *   `..._add_customer_rls.sql`: Creates `select_own_customer` and `update_own_customer` RLS policies on `public.customers` table, comparing `auth0_user_id` (text) to `(auth.uid())::text`.
     *   `..._add_account_rls.sql`: Creates helper function `public.get_my_customer_id()` and RLS policies (`select_own_accounts`, `insert_own_accounts`, `update_own_accounts`) on `public.accounts` table, linking to customer via the helper function.
 *   **Tables:**
@@ -231,7 +258,12 @@ This document provides a snapshot of the Core Banking System project based on th
     *   `public.ledger_entries`: Stores immutable debit/credit entries, linked to `accounts` via `account_id` (uuid).
 *   **RPC Functions:**
     *   `calculate_balance(account_id)`: Calculates account balance from ledger. Marked as `VOLATILE` to ensure correct evaluation within transactions.
-    *   `post_ledger_transaction(...)`: Atomically posts debit/credit pairs to ledger. Includes an insufficient funds check by calling `calculate_balance` and raising a custom exception (`P0001`) if the source account balance is less than the transfer amount.
+    *   `post_ledger_transaction(...)`: Atomically posts debit/credit pairs to ledger. Includes an insufficient funds check.
+    *   `check_account_access(p_account_id, p_customer_id)`: Checks if a customer owns an account.
+    *   `get_my_customer_id()`: Helper to get customer ID from JWT `sub`.
+    *   `get_customer_id_for_api_key(p_api_key)`: Retrieves customer ID for a valid API key.
+    *   `post_external_deposit(...)`: Atomically posts a deposit from an external source.
+    *   `get_account_transactions(p_account_id, p_requesting_customer_id)`: Retrieves ledger entries for a given account after checking ownership.
 *   **Row Level Security (RLS):**
     *   Enabled on `customers`, `accounts`, `ledger_entries`.
     *   Policies implemented for `customers` allow users to select/update their own record based on `auth0_user_id` matching the JWT `sub` claim.
@@ -320,61 +352,76 @@ Automated tests are crucial for ensuring the correctness and stability of the se
     *   **Issue:** The `public.calculate_balance` function was initially marked `STABLE`. This caused incorrect behavior within the `public.post_ledger_transaction` function, where the insufficient funds check relied on an up-to-date balance reading within the same transaction. The `STABLE` designation potentially led to stale reads or incorrect query planning.
     *   **Resolution:** The function has been changed to `VOLATILE` to ensure it is re-evaluated correctly each time it's called, providing the necessary consistency for the transaction check. 
 
-## Database Schema (Supabase/Postgres)
+## 13. Pre-Launch Considerations for Live Banking Operations
 
-### `accounts`
+Moving from the current prototype to a live, regulated banking operation requires addressing several critical areas **before** adding significant new features. These foundational elements are essential for security, compliance, and operational stability:
 
-*   Stores individual bank accounts (Checking, Savings).
-*   Linked to `customers` (`customer_id`).
-*   Contains account details like type, number, status, currency, balance (managed via triggers/RPC).
+1.  **Compliance & Legal Foundation:**
+    *   Obtain necessary banking licenses.
+    *   Conduct a deep dive into all applicable regulations (AML/CFT, GDPR, PSD2, etc.) with legal/compliance experts.
+    *   Implement a robust AML/KYC solution and onboarding process.
+    *   Finalize and vet Terms of Service and Privacy Policies.
+    *   Design and implement regulatory reporting mechanisms.
 
-### Row Level Security (RLS)
+2.  **Security Hardening & Verification:**
+    *   Perform comprehensive third-party penetration testing and remediate findings.
+    *   Establish a continuous vulnerability management program (scanning, remediation).
+    *   Implement/configure WAF and DDoS protection.
+    *   Harden IAM configurations (Auth0 policies, Supabase roles, internal staff access). Minimize `service_role` key usage.
+    *   Implement comprehensive, immutable audit logging for all sensitive operations.
 
-*   **Customers:**
-    *   Users can select/update their own customer record based on `auth0_user_id` matching the JWT `sub` claim.
-    *   Users can insert their own customer record.
-    *   **IMPORTANT:** When JWT `sub` claims are *not* standard UUIDs (e.g., Auth0 M2M tokens), the RLS policy must *not* use `auth.uid()`. Instead, compare against the subject extracted directly as text: `(auth0_user_id = (current_setting('request.jwt.claims', true)::jsonb ->> 'sub'))`.
-*   **Accounts:**
-    *   Users can select/insert/update accounts linked to their `customer_id`.
-    *   This often requires a helper function (e.g., `get_my_customer_id()`) to look up the `customer_id` based on the JWT `sub` claim. This function must use the `(current_setting(...))` method described above and should be defined with `SECURITY DEFINER` to bypass `customers` RLS during the lookup.
-    *   Access checks for specific accounts (e.g., `check_account_access(p_account_id uuid, p_customer_id uuid)`) may also be needed, potentially defined with `SECURITY DEFINER`.
-*   **Ledger Entries:**
-    *   Direct access is generally disallowed.
-    *   Modifications are handled exclusively via the `post_ledger_transaction` RPC function.
-    *   **Recommendation:** RLS should typically be **disabled** on the `ledger_entries` table, as security is managed by the trusted RPC function.
+3.  **Operational Robustness & Resilience:**
+    *   Set up comprehensive monitoring (APM, infrastructure, business transactions) and actionable alerting.
+    *   Develop and test a formal incident response plan.
+    *   Verify, test, and document disaster recovery and backup procedures (including RTO/RPO).
+    *   Define and monitor Service Level Objectives (SLOs).
 
-### Functions (RPC)
+4.  **Data Integrity & Financial Controls:**
+    *   Implement automated ledger verification and reconciliation processes.
+    *   Design and implement fraud detection mechanisms.
+    *   Refine error handling for financial transactions to ensure clarity and consistency.
 
-*   **`post_ledger_transaction`**: Handles the atomic creation of debit/credit entries for transfers, ensuring consistency and balance checks. Should be defined with `SECURITY DEFINER`.
-*   **`get_my_customer_id`**: (Helper for RLS) Retrieves the `customer_id` UUID based on the caller's JWT `sub` claim. Must use `(current_setting(...))` to get the `sub` claim and be `SECURITY DEFINER`.
-*   **`check_account_access`**: (Helper for API) Verifies if a given `customer_id` owns a specific `account_id`. Typically `SECURITY DEFINER`.
+5.  **Scalability & Performance Validation:**
+    *   Conduct realistic load testing to identify and address bottlenecks.
+    *   Perform performance tuning based on testing results.
 
-## API Functions (Netlify Functions)
+6.  **Architectural Refinements:**
+    *   Evaluate and potentially implement the planned asynchronous architecture (e.g., using Inngest) for critical flows like transfers to enhance resilience *before* launch. 
 
-### Service: `account-service`
+## 14. Deployment
 
-*   **Purpose:** Manages bank accounts.
-*   **Endpoints:**
-    *   `POST /accounts`: Creates a new account (CHECKING or SAVINGS) for the authenticated customer.
-    *   `GET /accounts`: Retrieves all accounts for the authenticated customer (uses RLS).
-    *   `GET /accounts/{accountId}`: Retrieves details for a specific account owned by the authenticated customer (requires `accountId` in standard UUID format, e.g., `123e4567-...`, **no `acc-` prefix**). Uses `check_account_access` RPC.
-    *   `GET /accounts/{accountId}/transactions`: (Not Implemented) Retrieves transactions for a specific account.
-    *   `POST /accounts/{accountId}/transactions`: (Not Implemented) Creates a new transaction (e.g., deposit, withdrawal - specific types TBD).
-*   **Authentication:** JWT required.
-*   **Dependencies:** `customer-service` (implicitly, for customer existence), Supabase (accounts table, RLS, helper functions).
+*   **Platform:** Netlify
+*   **Method:** Continuous Deployment linked to the `main` branch of the GitHub repository.
+*   **Process:** Pushing commits to `main` automatically triggers a build and deployment on Netlify.
+*   **Status:** The latest changes (including transaction retrieval) were deployed on May 2, 2024.
 
-### Service: `transaction-service`
+## 15. Testing
 
-*   **Purpose:** Handles money movement between accounts.
-*   **Endpoints:**
-    *   `POST /internal-transfer`: Executes a transfer between two accounts owned by the *same* authenticated customer (implicitly checked via RLS/RPC).
-    *   `GET /status`: Basic health check.
-*   **Authentication:** JWT required.
-*   **Dependencies:** Supabase (`post_ledger_transaction` RPC, RLS on `accounts`).
+*   **Automated Testing Strategy:**
+    *   **Running Tests:** Execute `npm test` from the project root.
+    *   **Specific Service:** Execute `npm test functions/<service-name>/<service-name>.test.js` (e.g., `npm test functions/transaction-service/transaction-service.test.js`).
+    *   **Test Types:**
+        *   **Unit Tests:** Located alongside the service code (e.g., `functions/account-service/account-service.test.js`). These tests focus on isolating and verifying the logic within a single service function.
+        *   **Integration Tests:** Located in `tests/integration/`. Currently, `core-flow.test.js` verifies the end-to-end interaction between services for critical user flows like registration and account creation. These tests run against a live (though potentially locally simulated via `netlify dev`) environment.
+    *   **Mocking Strategy:**
+        *   **External Dependencies:** External libraries and modules (e.g., `@supabase/supabase-js`, `jsonwebtoken`, `jwks-rsa`, `crypto`) are mocked using `jest.mock()` at the top of the test files.
+        *   **Environment Variables:** Environment variables (`SUPABASE_URL`, `AUTH0_DOMAIN`, etc.) required by the services are mocked by setting `process.env.VAR_NAME = 'mock-value'` *before* the service module is required in the test file.
+        *   **Supabase Client:**
+            *   The `createClient` function from `@supabase/supabase-js` is mocked to return a consistent mock client object.
+            *   This mock client exposes Jest mock functions (`mockFrom`, `mockRpc`) for its core methods.
+            *   Individual tests are responsible for configuring the behavior of `mockFrom` and `mockRpc` based on the specific database interactions expected for that test case. This often involves setting up mock function chains (e.g., `mockFrom.mockImplementationOnce(...)` returning objects with further mock functions like `select`, `eq`, `single`, `insert`, `update`, `delete`).
+        *   **Authentication:**
+            *   JWT verification (`jsonwebtoken.verify`, `jwks-rsa.getSigningKey`) is mocked to simulate successful or failed authentication scenarios.
+            *   Helper functions like `mockSuccessfulJwtAuth` and `mockFailedAuth` in test files encapsulate common authentication mock setups.
+            *   For services accepting API keys, the injected dependency function (e.g., `_getCustomerIdForApiKey` in `transaction-service`) is mocked directly using `jest.fn()` and configured via helpers like `mockSuccessfulApiKeyAuth` or `mockFailedApiKeyAuth`.
+    *   **Key Principles:**
+        *   Tests should be independent and reset mocks (`jest.clearAllMocks()`, `mockFn.mockReset()`, etc.) in `beforeEach` blocks.
+        *   Tests configure the specific mock behaviors they need, rather than relying on global mock setups.
+        *   Focus on testing the service logic, mocking away the actual external interactions.
 
 # ... (Authentication, Environment Variables, Local Development, Deployment unchanged) ... 
 
-## 13. Pre-Launch Considerations for Live Banking Operations
+## 16. Pre-Launch Considerations for Live Banking Operations
 
 Moving from the current prototype to a live, regulated banking operation requires addressing several critical areas **before** adding significant new features. These foundational elements are essential for security, compliance, and operational stability:
 

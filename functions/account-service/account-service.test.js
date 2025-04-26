@@ -8,11 +8,13 @@ process.env.AUTH0_DOMAIN = 'mock-auth0-domain.com';
 process.env.AUTH0_AUDIENCE = 'mock-audience';
 
 // Helper function to create a JSON response object (matching Netlify/AWS format)
+/* // Comment out unused function for now
 const createJsonResponse = (statusCode, body) => ({
     statusCode,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
 });
+*/
 
 // --- Mock External Dependencies ---
 
@@ -61,7 +63,6 @@ describe('Account Service Handler (handlerInternal)', () => {
     const mockValidJwt = 'mockValidTokenString';
     const mockDecodedToken = { sub: mockAuth0UserId };
     const mockApiKey = 'test-api-key-xyz';
-    const mockSigningKey = 'mock-signing-key-string';
     const mockGeneratedUUID = 'uuid-generated-by-crypto';
     const mockGeneratedAccountNumber = mockGeneratedUUID;
     const mockAccountId = '550e8400-e29b-41d4-a716-446655440000'; // Use standard UUID
@@ -81,7 +82,7 @@ describe('Account Service Handler (handlerInternal)', () => {
      }; // Balance added dynamically via RPC mock
 
     // Define mock implementations reusable in helpers/tests
-    const mockGetSigningKey = jest.fn();
+    // const mockGetSigningKey = jest.fn(); // Unused
 
     // Helper to create mock event (mostly unchanged)
     const createMockEvent = (httpMethod, path, body = null, headers = {}, pathParameters = null) => {
@@ -114,8 +115,8 @@ describe('Account Service Handler (handlerInternal)', () => {
     // Helper for successful JWT auth mock setup (Needs modification for new strategy)
     const mockSuccessfulJwtAuth = (customerId = mockCustomerId) => {
         // Configure JWT mocks (jsonwebtoken, jwks-rsa)
-        const mockGetSigningKey = jest.fn((header, callback) => { callback(null, 'mock-signing-key'); });
-        JwksClient.mockImplementation(() => ({ getSigningKey: mockGetSigningKey }));
+        const mockGetSigningKeyFunc = jest.fn((header, callback) => { callback(null, 'mock-signing-key'); }); // Renamed variable
+        JwksClient.mockImplementation(() => ({ getSigningKey: mockGetSigningKeyFunc }));
         jwt.verify.mockImplementation((token, keyLookup, options, callback) => {
             callback(null, mockDecodedToken);
         });
@@ -215,8 +216,8 @@ describe('Account Service Handler (handlerInternal)', () => {
 
          test('should return 403 if customer lookup fails after successful JWT verification', async () => {
              // Mock JWT success first
-             const mockGetSigningKey = jest.fn((header, callback) => { callback(null, 'mock-signing-key'); });
-             JwksClient.mockImplementation(() => ({ getSigningKey: mockGetSigningKey }));
+             const mockGetSigningKeyFunc = jest.fn((header, callback) => { callback(null, 'mock-signing-key'); });
+             JwksClient.mockImplementation(() => ({ getSigningKey: mockGetSigningKeyFunc }));
              jwt.verify.mockImplementation((token, keyLookup, options, callback) => {
                  callback(null, mockDecodedToken);
              });

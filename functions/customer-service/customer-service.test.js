@@ -15,9 +15,9 @@ process.env.SUPABASE_JWT_SECRET = 'mock-jwt-secret'; // Needed for Supabase clie
 
 // Mock Supabase Client
 const mockFrom = jest.fn();
-const mockSelect = jest.fn();
-const mockEq = jest.fn();
-const mockSingle = jest.fn();
+// const mockSelect = jest.fn(); // Unused
+// const mockEq = jest.fn(); // Unused
+// const mockSingle = jest.fn(); // Unused
 const mockInsert = jest.fn();
 const mockSupabaseClient = {
     from: mockFrom,
@@ -40,7 +40,7 @@ jest.mock('jwks-rsa', () => ({
 }));
 
 // --- Import Helpers ---
-const { createJsonResponse } = require('../utils/responseUtils.js');
+// const { createJsonResponse } = require('../utils/responseUtils.js'); // Unused
 
 // --- Import Module Under Test ---
 // Environment variables are set before this require runs
@@ -50,8 +50,8 @@ const handlerInternal = customerServiceModule.handlerInternal;
 // const verifyTokenImplementation = customerServiceModule.verifyTokenImplementation;
 
 // Require mocked libraries AFTER jest.mock calls (not strictly necessary but good practice)
-const jwt = require('jsonwebtoken');
-const { JwksClient } = require('jwks-rsa');
+// const jwt = require('jsonwebtoken'); // Unused
+// const { JwksClient } = require('jwks-rsa'); // Unused
 
 // --- Define Mock Data ---
 const mockCustomerId = 'cust-uuid-from-db-123';

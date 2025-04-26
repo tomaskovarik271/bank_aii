@@ -281,7 +281,7 @@ async function handlerInternal(event, context) { // <-- NEW Internal Function
             { message: error.message || 'Internal Server Error' }
         );
     }
-}; 
+}
 
 /**
  * Public Netlify Function handler for Customer Service.

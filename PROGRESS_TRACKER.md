@@ -33,7 +33,7 @@
 *   [x] Row Level Security (RLS) Policies:
     *   [x] `customers` table (SELECT, INSERT, UPDATE, DELETE)
     *   [x] `accounts` table (SELECT, INSERT, UPDATE)
-    *   [ ] `ledger_entries` table (RLS Disabled - Recommended)
+    *   [x] `ledger_entries` table (RLS Disabled - Recommended)
 
 ## Phase 3: Testing & Refinement
 
@@ -41,7 +41,7 @@
     *   [x] Refactored Supabase mocks across all test suites for clarity and accuracy.
     *   [x] Fixed numerous unit test failures in `account-service` and `transaction-service` related to mocks and routing logic.
     *   [x] Implemented comprehensive unit tests for `customer-service` covering all current endpoints and logic paths.
-    *   [x] `account-service` (Covering existing CRUD)
+    *   [x] `account-service` (Covering existing CRUD, **+ GET /accounts/{id}/transactions**)
     *   [x] `transaction-service` (Covering Status, Internal Transfer, External Deposit)
     *   **Note:** All core services now have foundational unit tests.
 *   [x] Integration Tests: (Core flow implemented)
@@ -132,6 +132,13 @@
 *   [ ] API Key Management for External Partners (Further Enhancements)
 *   [ ] Currency Conversion
 *   [ ] Notifications Service
+
+## Phase 5: Deployment & Monitoring
+
+*   [x] Initial Deployment to Netlify (Apr 23, 2024)
+*   [x] Second Deployment (May 2, 2024) - Included External Deposits, Transaction Retrieval, and various fixes/refinements.
+*   [ ] Setup Basic Monitoring (Netlify Logs, Supabase Dashboard)
+*   [ ] Configure Production Environment Variables
 
 ## Known Issues / TODOs
 
