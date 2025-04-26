@@ -34,7 +34,7 @@ This document provides a snapshot of the Core Banking System project based on th
 *   **Initialization:** Standard `npm init -y`, `git init`.
 *   **Core Dependencies:**
     *   Runtime: `@supabase/supabase-js`, `jsonwebtoken`, `jwks-rsa`.
-    *   Development: `netlify-cli`, `jest`, `eslint`.
+    *   Development: `netlify-cli`, `jest`, `eslint`, `dotenv` (for local integration testing).
 *   **Directory Structure:**
     ```
     /
@@ -67,14 +67,22 @@ This document provides a snapshot of the Core Banking System project based on th
     ├── package.json
     ├── package-lock.json
     ├── PROGRESS_TRACKER.md # Progress tracking document
-    └── SYSTEM_DOCUMENTATION.md # This documentation
-    └── PROJECT_KICKOFF_GUIDE.md # Original guide
+    ├── SYSTEM_DOCUMENTATION.md # This documentation
+    ├── PROJECT_KICKOFF_GUIDE.md # Original guide
+    ├── tests/                 # Integration tests
+    │   └── integration/
+    │       └── core-flow.test.js
+    └── ...
     ```
 *   **Configuration Files:**
     *   `.gitignore`: Excludes `node_modules/`, `.env*`, logs.
-    *   `netlify.toml`: Defines build (`publish = "public/"`), functions (`functions = "functions/"`), dev server settings, redirects (`/api/*` proxies to `/.netlify/functions/:splat`), and the build command.
-    *   `package.json`: Lists dependencies and basic project info, including `lint` and `test` scripts.
-    *   `.eslintrc.json`: Configures ESLint rules for code quality.
+    *   `netlify.toml`: Defines build (`publish = "public/"`), functions (`functions = "functions/"`), dev server settings, redirects (`/api/*` proxies to `/.netlify/functions/:splat`), and the build command (`npm run lint && npm test`).
+    *   `package.json`: Lists dependencies and project info. Includes scripts:
+        *   `lint`: `eslint -c .eslintrc.json functions/**/*.js`
+        *   `test`: `jest --testPathIgnorePatterns=tests/integration` (Runs unit tests only, used in CI)
+        *   `test:integration`: `jest tests/integration` (Runs integration tests, requires local .env)
+        *   `test:all`: `jest` (Runs all tests)
+    *   `.eslintrc.json`: Configures ESLint rules for code quality. Includes Jest environment (`"env": { "jest": true }`).
 
 ## 4. Cloud Configuration
 
@@ -106,6 +114,9 @@ This document provides a snapshot of the Core Banking System project based on th
 *   **File:** `functions/transaction-service/transaction-service.js`
 *   **Purpose:** Handles money movement between accounts (internal transfers) and external deposits.
 *   **Tests:** Comprehensive unit tests available in `transaction-service.test.js`.
+*   **Authentication:**
+    *   **JWT:** Uses `Authorization: Bearer <token>` for user-initiated actions (e.g., `/internal-transfer`). Validated using `jsonwebtoken` and `jwks-rsa` against Auth0.
+    *   **API Key:** Uses `X-API-Key: <key>` header for system-to-system actions (e.g., `/transactions/external`). Validated by calling the `get_customer_id_for_api_key` Supabase RPC function.
 *   **Endpoints Implemented:**
     *   `GET /api/transaction-service/status`
         *   **Method:** `GET`
@@ -136,7 +147,7 @@ This document provides a snapshot of the Core Banking System project based on th
     *   `POST /api/transaction-service/transactions/external`
         *   **Method:** `POST`
         *   **Auth:** API Key required (`X-API-Key` header).
-        *   **Purpose:** Allows external systems (e.g., payment gateway) to deposit funds into an account.
+        *   **Purpose:** Allows external systems (e.g., payment gateway) to deposit funds into an account. Relies on the `post_external_deposit` RPC for core logic and validation.
         *   **Request Body:**
             ```json
             {
@@ -164,14 +175,14 @@ This document provides a snapshot of the Core Banking System project based on th
                 }
                 ```
             *   `400 Bad Request`: Invalid input (missing fields, invalid types). Also returned for RPC validation errors like `Currency mismatch` or `Account is inactive`.
-            *   `401 Unauthorized`: Missing or invalid API Key.
-            *   `403 Forbidden`: Invalid API Key (if key exists but is not valid).
+            *   `401 Unauthorized`: Missing API Key.
+            *   `403 Forbidden`: Invalid API Key (if key exists but is not valid, determined by `get_customer_id_for_api_key` RPC).
             *   `404 Not Found`: `accountId` does not exist (from RPC error).
             *   `500 Internal Server Error`: Database error during API key verification or RPC call.
 *   **Key Features:**
     *   Handles both Auth0 JWT (for internal transfers) and API Key validation (for external deposits).
     *   Input validation (basic structure/type checks in handler, business logic checks in RPCs).
-    *   Uses Supabase RPCs (`post_ledger_transaction`, `post_external_deposit`) for atomic database operations.
+    *   Uses Supabase RPCs (`post_ledger_transaction`, `post_external_deposit`, `get_customer_id_for_api_key`) for atomic database operations and validation.
     *   Specific error handling for various failure scenarios (validation, auth, insufficient funds, RPC errors).
 
 ### 6.2. `customer-service`
@@ -195,15 +206,16 @@ This document provides a snapshot of the Core Banking System project based on th
 *   **File:** `functions/account-service/account-service.js`
 *   **Purpose:** Manages bank accounts (creation, retrieval, listing, update, delete) and retrieves account transaction history.
 *   **Tests:** Comprehensive unit tests available in `account-service.test.js`.
+*   **Authentication:** Handles both JWT (`Authorization: Bearer`) and API Key (`X-API-Key`) authentication. API Key validation uses the `get_customer_id_for_api_key` RPC.
 *   **Endpoints Implemented:**
-    *   `POST /api/account-service/accounts`: Creates a new account (CHECKING/SAVINGS) linked to the authenticated user's customer profile.
-    *   `GET /api/account-service/accounts`: Lists accounts for the authenticated customer.
-    *   `GET /api/account-service/accounts/{accountId}`: Retrieves details for a specific account, including calculated balance.
-    *   `PATCH /api/account-service/accounts/{accountId}`: Updates the nickname for a specific account.
-    *   `DELETE /api/account-service/accounts/{accountId}`: Deletes a specific account.
+    *   `POST /api/account-service/accounts`: Creates a new account (CHECKING/SAVINGS) linked to the authenticated user's customer profile. (JWT Auth required).
+    *   `GET /api/account-service/accounts`: Lists accounts for the authenticated customer. (JWT or API Key Auth).
+    *   `GET /api/account-service/accounts/{accountId}`: Retrieves details for a specific account, including calculated balance. (JWT or API Key Auth).
+    *   `PATCH /api/account-service/accounts/{accountId}`: Updates the nickname for a specific account. (JWT Auth required).
+    *   `DELETE /api/account-service/accounts/{accountId}`: Deletes a specific account. (JWT Auth required).
     *   `GET /api/account-service/accounts/{accountId}/transactions`: Retrieves the list of ledger entries for a specific account.
         *   **Method:** `GET`
-        *   **Auth:** JWT or API Key required.
+        *   **Auth:** JWT or API Key required (uses `check_account_access` RPC for authorization).
         *   **Purpose:** Fetches the transaction history (ledger entries) for an account the authenticated user has access to.
         *   **Response:**
             *   `200 OK`: Returns an array of ledger entry objects.
@@ -226,14 +238,14 @@ This document provides a snapshot of the Core Banking System project based on th
             *   `400 Bad Request`: Invalid `accountId` format in the path.
             *   `401 Unauthorized`: Missing or invalid authentication (JWT or API Key).
             *   `403 Forbidden`: Authenticated user does not have access to the requested `accountId` (checked via `check_account_access` RPC).
-            *   `404 Not Found`: Account not found (if `get_account_transactions` RPC fails with 'Not Found').
+            *   `404 Not Found`: Account not found (returned by access check or if `get_account_transactions` RPC fails with 'Not Found').
             *   `500 Internal Server Error`: Database error during access check or transaction fetch RPC call.
     *   `POST /api/account-service/accounts/{accountId}/transactions`: (Not Implemented - returns 501)
 *   **Key Features:**
     *   Handles both JWT and API Key authentication.
     *   Uses `check_account_access` Supabase RPC for authorization on specific account operations (GET/PATCH/DELETE specific account, GET transactions).
-    *   Calls `calculate_balance` Supabase RPC for `GET /{accountId}`.
-    *   Calls `get_account_transactions` Supabase RPC for `GET /{accountId}/transactions`.
+    *   Calls `calculate_balance` Supabase RPC for `GET /accounts/{accountId}`.
+    *   Calls `get_account_transactions` Supabase RPC for `GET /accounts/{accountId}/transactions`.
     *   Generates placeholder unique `account_number` using UUID.
 
 ## 7. Database Schema & Migrations (Supabase)
@@ -247,29 +259,34 @@ This document provides a snapshot of the Core Banking System project based on th
     5.  `supabase start` (Ensures local Docker stack is running)
     6.  `supabase db reset` (Applies all migrations locally to clean Docker DB)
     7.  `supabase db push` (Applies new migrations to linked remote DB)
-*   **Implemented Migrations:**
-    *   `..._init_schema.sql`: Creates ENUM types, `customers`, `accounts`, `ledger_entries` tables with columns, indexes, FKs. Enables `moddatetime` extension and RLS on tables.
-    *   `..._create_ledger_rpcs.sql`: Creates `public.calculate_balance(uuid)`, `public.post_ledger_transaction(...)`, `public.check_account_access(p_account_id, p_customer_id)`, `public.get_my_customer_id()`, `public.get_customer_id_for_api_key(p_api_key)`, `public.post_external_deposit(...)`, and `public.get_account_transactions(p_account_id, p_requesting_customer_id)` functions.
-    *   `..._add_customer_rls.sql`: Creates `select_own_customer` and `update_own_customer` RLS policies on `public.customers` table, comparing `auth0_user_id` (text) to `(auth.uid())::text`.
-    *   `..._add_account_rls.sql`: Creates helper function `public.get_my_customer_id()` and RLS policies (`select_own_accounts`, `insert_own_accounts`, `update_own_accounts`) on `public.accounts` table, linking to customer via the helper function.
-*   **Tables:**
-    *   `public.customers`: Stores customer profile data, linked via `auth0_user_id` (text, unique).
-    *   `public.accounts`: Stores bank account info, linked to `customers` via `customer_id` (uuid).
-    *   `public.ledger_entries`: Stores immutable debit/credit entries, linked to `accounts` via `account_id` (uuid).
-*   **RPC Functions:**
-    *   `calculate_balance(account_id)`: Calculates account balance from ledger. Marked as `VOLATILE` to ensure correct evaluation within transactions.
-    *   `post_ledger_transaction(...)`: Atomically posts debit/credit pairs to ledger. Includes an insufficient funds check.
-    *   `check_account_access(p_account_id, p_customer_id)`: Checks if a customer owns an account.
-    *   `get_my_customer_id()`: Helper to get customer ID from JWT `sub`.
-    *   `get_customer_id_for_api_key(p_api_key)`: Retrieves customer ID for a valid API key.
-    *   `post_external_deposit(...)`: Atomically posts a deposit from an external source.
-    *   `get_account_transactions(p_account_id, p_requesting_customer_id)`: Retrieves ledger entries for a given account after checking ownership.
-*   **Row Level Security (RLS):**
-    *   Enabled on `customers`, `accounts`, `ledger_entries`.
-    *   Policies implemented for `customers` allow users to select/update their own record based on `auth0_user_id` matching the JWT `sub` claim.
-    *   Policies implemented for `accounts` allow users to select/insert/update accounts linked to their own customer record (via `get_my_customer_id()` helper).
+*   **Implemented Migrations:** (Refer to `supabase/migrations/` for full details)
+    *   Initial schema setup (`customers`, `accounts`, `ledger_entries`, etc.).
+    *   Core RPC functions (`post_ledger_transaction`, `calculate_balance`, `post_external_deposit`, `check_account_access`, `get_customer_id_for_api_key`, `get_account_transactions`).
+    *   RLS policies for data security.
+*   **Key RPC Functions:**
+    *   `post_ledger_transaction`: Atomically creates debit/credit entries for internal transfers. Includes balance checks and permission enforcement.
+    *   `post_external_deposit`: Creates a single credit entry for external deposits. Includes validation checks.
+    *   `calculate_balance`: Calculates the current balance for an account based on ledger entries.
+    *   `check_account_access`: Verifies if a given `customer_id` owns a specific `account_id`. Used for authorization.
+    *   `get_customer_id_for_api_key`: Validates an API key and returns the associated `customer_id`. Used for API Key authentication.
+    *   `get_account_transactions`: Retrieves ledger entries for a specific account.
 
-## 8. Authentication & Authorization
+## 8. Testing & Deployment
+
+*   **Linting:** ESLint (`npm run lint`) is used to enforce code style and catch potential errors. It's configured in `.eslintrc.json` (including the Jest environment) and run as part of the Netlify build process.
+*   **Unit Testing:** Jest (`npm test`) is used for unit testing individual functions and service handlers. Mocks are used extensively for external dependencies (Supabase client, JWT libraries).
+    *   Tests are located alongside the service files (e.g., `functions/customer-service/customer-service.test.js`).
+    *   The `test` script in `package.json` (`jest --testPathIgnorePatterns=tests/integration`) excludes integration tests and is run during the Netlify build.
+*   **Integration Testing:** Jest (`npm run test:integration`) is used for end-to-end tests that interact with deployed or locally running services.
+    *   Tests are located in the `tests/integration` directory.
+    *   These tests typically require environment variables for external services (e.g., Auth0 M2M credentials for making real API calls). These should be managed locally (e.g., via a `.env` file) and **not** run during the standard Netlify build.
+    *   The `test:integration` script in `package.json` specifically targets this directory (`jest tests/integration`).
+*   **Deployment:**
+    *   Deployment is handled automatically by Netlify upon pushes to the main GitHub branch.
+    *   The build command (`npm run lint && npm test`) defined in `netlify.toml` ensures code is linted and unit tests pass before deployment.
+    *   Build issues related to ESLint configuration (`env.jest`) and integration tests running in CI have been resolved. Environment variables for Supabase/Auth0 are configured in the Netlify site UI.
+
+## 9. Security Considerations
 
 *   **Authentication:** Handled by Auth0. Users/applications obtain JWTs from Auth0.
 *   **Function Authorization:**
@@ -283,58 +300,13 @@ This document provides a snapshot of the Core Banking System project based on th
     *   **Client Initialization:** Netlify functions correctly initialize the Supabase client using the validated user JWT passed in the `Authorization` header. This ensures that database operations performed via this client instance respect the user's RLS policies.
     *   **API Key Flow:** In `account-service`, the API key authentication path uses the `anon` key but relies on the `customerId` verified via the `get_customer_id_for_api_key` RPC function. RLS policies and function logic must correctly authorize based on this `customerId`.
 
-## 9. API Routing
+## 10. API Routing
 
 *   **Netlify Proxy:** `netlify.toml` defines a redirect: `[[redirects]] from = "/api/*" to = "/.netlify/functions/:splat" status = 200`. This routes incoming requests starting with `/api/` to the corresponding Netlify Function.
 *   **Internal Function Routing:** Each function (e.g., `customer-service.js`) inspects `event.httpMethod` and calculates a `subPath` (the path *after* the function name prefix) to handle different actions (e.g., `GET /me`, `POST /`). 
     *   `customer-service` handles `/me`, `/`.
     *   `account-service` handles `/accounts`, `/accounts/{accountId}`.
     *   `transaction-service` handles `/status`, `/internal-transfer`. 
-
-## 10. Continuous Integration / Continuous Deployment (CI/CD)
-
-*   **Platform:** Netlify CI/CD is used for automated builds and deployments.
-*   **Trigger:** Builds are triggered by pushes to the linked Git repository branch (typically `main`).
-*   **Build Command:** Defined in `netlify.toml` under `[build]`:
-    ```toml
-    [build]
-      command = "npm run lint && npm run test"
-      publish = "public/"
-      functions = "functions/"
-    ```
-*   **Steps:**
-    1.  **Linting:** `npm run lint` (executes `eslint .`) runs first to check code style and quality.
-    2.  **Testing:** `npm run test` (executes `jest`) runs next to execute automated tests.
-    3.  **Deployment:** If both linting and tests pass, Netlify deploys the functions and static assets.
-*   **Tools:**
-    *   **ESLint:** Used for static code analysis (`.eslintrc.json` configuration).
-    *   **Jest:** Used as the testing framework for unit/integration tests (`*.test.js` files).
-
-## 10.1 Automated Testing Strategy
-
-Automated tests are crucial for ensuring the correctness and stability of the services. The project utilizes Jest (`*.test.js`) for this purpose.
-
-*   **Running Tests:**
-    *   **All Tests:** Execute `npm test` from the project root.
-    *   **Specific Service:** Execute `npm test functions/<service-name>/<service-name>.test.js` (e.g., `npm test functions/transaction-service/transaction-service.test.js`).
-*   **Test Types:**
-    *   **Unit Tests:** Located alongside the service code (e.g., `functions/account-service/account-service.test.js`). These tests focus on isolating and verifying the logic within a single service function.
-    *   **Integration Tests:** Located in `tests/integration/`. Currently, `core-flow.test.js` verifies the end-to-end interaction between services for critical user flows like registration and account creation. These tests run against a live (though potentially locally simulated via `netlify dev`) environment.
-*   **Mocking Strategy:**
-    *   **External Dependencies:** External libraries and modules (e.g., `@supabase/supabase-js`, `jsonwebtoken`, `jwks-rsa`, `crypto`) are mocked using `jest.mock()` at the top of the test files.
-    *   **Environment Variables:** Environment variables (`SUPABASE_URL`, `AUTH0_DOMAIN`, etc.) required by the services are mocked by setting `process.env.VAR_NAME = 'mock-value'` *before* the service module is required in the test file.
-    *   **Supabase Client:**
-        *   The `createClient` function from `@supabase/supabase-js` is mocked to return a consistent mock client object.
-        *   This mock client exposes Jest mock functions (`mockFrom`, `mockRpc`) for its core methods.
-        *   Individual tests are responsible for configuring the behavior of `mockFrom` and `mockRpc` based on the specific database interactions expected for that test case. This often involves setting up mock function chains (e.g., `mockFrom.mockImplementationOnce(...)` returning objects with further mock functions like `select`, `eq`, `single`, `insert`, `update`, `delete`).
-    *   **Authentication:**
-        *   JWT verification (`jsonwebtoken.verify`, `jwks-rsa.getSigningKey`) is mocked to simulate successful or failed authentication scenarios.
-        *   Helper functions like `mockSuccessfulJwtAuth` and `mockFailedAuth` in test files encapsulate common authentication mock setups.
-        *   For services accepting API keys, the injected dependency function (e.g., `_getCustomerIdForApiKey` in `transaction-service`) is mocked directly using `jest.fn()` and configured via helpers like `mockSuccessfulApiKeyAuth` or `mockFailedApiKeyAuth`.
-*   **Key Principles:**
-    *   Tests should be independent and reset mocks (`jest.clearAllMocks()`, `mockFn.mockReset()`, etc.) in `beforeEach` blocks.
-    *   Tests configure the specific mock behaviors they need, rather than relying on global mock setups.
-    *   Focus on testing the service logic, mocking away the actual external interactions.
 
 ## 11. Architectural Notes
 
@@ -354,7 +326,7 @@ Automated tests are crucial for ensuring the correctness and stability of the se
 
 ## 13. Pre-Launch Considerations for Live Banking Operations
 
-Moving from the current prototype to a live, regulated banking operation requires addressing several critical areas **before** adding significant new features. These foundational elements are essential for security, compliance, and operational stability:
+Moving from the current prototype to a live, regulated banking operation requires addressing several critical areas **before** adding significant new features. These foundational elements are essential for security, compliance, and operational stability: 
 
 1.  **Compliance & Legal Foundation:**
     *   Obtain necessary banking licenses.
