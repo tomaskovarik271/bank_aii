@@ -21,7 +21,7 @@ if (!supabaseUrl || !supabaseAnonKey || !auth0Domain || !auth0Audience) {
 // Initialize JWKS client to fetch Auth0 public keys for token verification
 const jwksRsaClient = new JwksClient({
     jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
-    cache: true, // Cache signing keys for performance
+    cache: false, // <-- MODIFIED: Disable cache for debugging
     rateLimit: true // Prevent abuse
 });
 
