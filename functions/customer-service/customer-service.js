@@ -39,9 +39,10 @@ const jwksRsaClient = new JwksClient({
 function getSigningKey(header, callback) {
     jwksRsaClient.getSigningKey(header.kid, (err, key) => {
         if (err) {
-            console.error('Error getting signing key:', err);
+            console.error('Error getting signing key from JWKS:', err); // Log full error
             return callback(err);
         }
+        console.log('Successfully fetched signing key:', JSON.stringify(key, null, 2)); 
         const signingKey = key.publicKey || key.rsaPublicKey;
         callback(null, signingKey);
     });
@@ -67,7 +68,7 @@ async function verifyToken(authHeader) {
             algorithms: ['RS256']
         }, (err, decoded) => {
             if (err) {
-                console.error('JWT verification error:', err);
+                console.error('JWT verification error:', err); // Log the full error object
                 return reject({ statusCode: 401, message: `Token verification failed: ${err.message}` });
             }
             // Token is valid, resolve with the decoded payload AND the original token
