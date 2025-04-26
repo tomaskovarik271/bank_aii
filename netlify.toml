@@ -1,8 +1,8 @@
 # netlify.toml
 
 [build]
-  # Command to build frontend assets (if any). For now, none needed.
-  command = "echo 'No build command needed for now'" 
+  # Command to build frontend assets (if any) AND run checks.
+  command = "npm run lint && npm test" 
   # Directory containing deployable static files (e.g., index.html).
   publish = "public/"    
   # Directory where Netlify Functions live.

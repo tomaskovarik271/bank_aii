@@ -55,6 +55,7 @@ Inter-service communication will primarily be asynchronous via Inngest, with syn
     *   (Potentially Inngest, VGS later)
 *   **IDE:** VS Code / Cursor recommended.
 *   **Netlify CLI:** To be installed locally via npm.
+*   **Supabase CLI:** Required for database migrations. Install globally (e.g., via Homebrew on macOS: `brew install supabase/tap/supabase`, or see [Supabase docs](https://supabase.com/docs/guides/cli) for other OS).
 *   **(Optional) REST Client:** Postman, Insomnia, or VS Code REST Client extension for API testing.
 
 ## 6. Initial Project Setup
@@ -180,6 +181,7 @@ Get the necessary credentials and configure the services. Store secrets securely
         *   **Record:** The **Project URL** and the `service_role` **Secret** Key. **Treat the service_role key as highly sensitive.**
     *   **(Recommended) Define Initial Schema:**
         *   Use the Supabase UI (Table Editor, SQL Editor) or Supabase Migrations (via Supabase CLI, recommended for team collaboration) to define initial tables (e.g., `customers`, `accounts`, `ledger_entries`). See Section 10 for initial designs. Consider using UUIDs for primary keys.
+        *   **Migrations Workflow:** Common commands include `supabase migration new <name>` (create), `supabase db reset` (apply locally after `supabase start`), and `supabase db push` (apply to remote).
         *   Enable Row Level Security (RLS) on tables containing sensitive data (Authentication -> Policies).
 
 3.  **Netlify:**
@@ -199,7 +201,7 @@ Get the necessary credentials and configure the services. Store secrets securely
             *   `AUTH0_DOMAIN` (Your Auth0 Domain, e.g., `your-tenant.us.auth0.com`)
             *   `AUTH0_AUDIENCE` (The API Identifier/Audience you created in Auth0)
             *   (Optionally: Add M2M Client ID/Secret if needed directly server-side, though often not required *within* functions if the token is generated externally for testing).
-        *   **Scope:** Ensure these are available to Functions and during Builds/Deploys as needed. The default "All scopes" is usually fine initially.
+        *   **Scope:** Ensure these are available to Functions and during Builds/Deploys as needed. The default "All scopes" is usually fine initially. **Crucially, for `netlify dev` to inject variables correctly, ensure the scope includes "Local development" or is set to "All scopes".**
 
 ## 8. Local Development Workflow
 
@@ -211,6 +213,7 @@ This setup allows for efficient local development and testing of Netlify Functio
     npx netlify link
     ```
     *   Follow the prompts to connect to your Netlify account and select the Netlify site you created in Step 7.3. This links your local environment to the site's settings, including environment variables.
+    *   **Troubleshooting:** If `netlify dev` later fails to load environment variables, run `npx netlify status` to verify your local project is linked to the correct Netlify Site ID.
 
 2.  **Start Netlify Dev:**
     *   Run this command in the project root:
@@ -228,6 +231,7 @@ This setup allows for efficient local development and testing of Netlify Functio
     *   For variables you don't want to store in the Netlify UI (e.g., local-only overrides, sensitive dev keys), you can create a `.env` file in the project root.
     *   **Ensure `.env` is listed in your `.gitignore` file!**
     *   `netlify dev` will load variables from this file, and they will *override* variables with the same name fetched from the Netlify UI.
+    *   **Note:** In some cases, if variables from the Netlify UI fail to inject into `netlify dev` despite correct linking and scope settings, using a local `.env` file may be necessary as a workaround for local development.
     ```.env
     # Example .env file - DO NOT COMMIT SENSITIVE VALUES
     # SUPABASE_URL=local_override_or_different_dev_supabase_url
@@ -328,7 +332,8 @@ This example demonstrates creating a basic Netlify Function (`transaction-servic
         // event.path might be /.netlify/functions/transaction-service/some/route 
         // or just /some/route depending on Netlify proxy behavior.
         // This regex removes the function prefix to get the sub-path.
-        const subPath = event.path.replace(/^\/?(\.netlify\/functions\/)?[^\/]+/, '') || '/'; 
+        // Note: This regex might need adjustment based on function naming and routing complexity.
+        const subPath = event.path.replace(/^\/?(\.netlify\/functions\/|api\/)?transaction-service/, '') || '/'; 
         const method = event.httpMethod;
 
         console.log(`Request received: ${method} ${event.path} (SubPath: ${subPath})`);
@@ -497,7 +502,7 @@ CREATE TABLE public.accounts (
     created_at timestamptz NOT NULL DEFAULT now(),
     -- Foreign key linking to the customer owning this account
     customer_id uuid NOT NULL REFERENCES public.customers(id), 
-    account_number text NOT NULL UNIQUE, -- Needs robust generation logic
+    account_number text NOT NULL UNIQUE, -- Needs robust generation logic (UUID used as initial placeholder)
     account_type public.account_type_enum NOT NULL,
     status public.account_status_enum NOT NULL DEFAULT 'ACTIVE'::public.account_status_enum,
     currency character(3) NOT NULL DEFAULT 'USD'::bpchar, -- ISO 4217 currency code
@@ -723,6 +728,7 @@ Refer back to these points during development:
     *   Use direct synchronous function calls (e.g., via `fetch`) sparingly, only for essential queries where immediate data is needed.
     *   Design events and function handlers to be idempotent (safe to retry).
     *   Leverage Inngest features for retries, delays, scheduling, and complex workflows.
+    *   **Note:** Initial implementations of services (e.g., `transaction-service` calling ledger RPCs synchronously) may start with direct interactions for simplicity. However, these command-like operations should be refactored later to use asynchronous events via Inngest to achieve the desired decoupling and resilience benefits.
 *   **State Management:**
     *   Functions are stateless. All persistent business state resides in Supabase.
     *   Use Supabase ACID transactions (especially via RPC functions) for atomic updates.

@@ -1,0 +1,16 @@
+{
+  "env": {
+    "commonjs": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": "latest"
+  },
+  "rules": {
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_|event|context" }],
+    "no-console": "off" // Allow console.log for Netlify functions
+  },
+  "ignorePatterns": ["node_modules/", "public/", "supabase/"]
+} 
